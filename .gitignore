@@ -43,6 +43,8 @@ next-env.d.ts
 /.wrangler/
 # Checkout-local execution profile and tool state; never publish them.
 /.sites-runtime/
+/.vercel/
+/README.md
 /.agents/
 /.codex/
 /outputs/

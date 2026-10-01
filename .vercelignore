@@ -1,0 +1,8 @@
+.env
+.env.*
+.dev.vars*
+.sites-runtime
+.wrangler
+dist
+node_modules
+README.md
