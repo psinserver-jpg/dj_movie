@@ -16,10 +16,10 @@ function Change({ movie }: { movie: Movie }) {
   if (movie.rankOldAndNew === "NEW") return <span className="rank-new">NEW</span>;
   return <span className={`rank-change ${n > 0 ? "up" : n < 0 ? "down" : "same"}`} aria-label={n ? `전일 대비 ${Math.abs(n)}위 ${n > 0 ? "상승" : "하락"}` : "순위 변동 없음"}>{n > 0 ? "▲" : n < 0 ? "▼" : "—"}{n !== 0 && ` ${Math.abs(n)}`}</span>;
 }
-export default function BoxOffice({ initialDate }: { initialDate: string }) {
+export default function BoxOffice({ initialDate, initialMovies }: { initialDate: string; initialMovies?: Movie[] }) {
   const [date, setDate] = useState(initialDate);
-  const [movies, setMovies] = useState<Movie[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [movies, setMovies] = useState<Movie[]>(initialMovies ?? []);
+  const [loading, setLoading] = useState(initialMovies === undefined);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   const [selected, setSelected] = useState<Movie | null>(null);
@@ -29,14 +29,27 @@ export default function BoxOffice({ initialDate }: { initialDate: string }) {
   const [detailRetry, setDetailRetry] = useState(0);
   const maxDate = lastAvailableDate();
   const requestVersion = useRef(0);
+  const rankingsCache = useRef(new Map<string, { expires: number; movies: Movie[] }>(initialMovies ? [[initialDate, { expires: Date.now() + 600000, movies: initialMovies }]] : []));
+  const detailsCache = useRef(new Map<string, { expires: number; info: MovieInfo }>());
 
   useEffect(() => {
     const controller = new AbortController();
     const version = ++requestVersion.current;
-    setLoading(true); setError(""); setMovies([]); setSelected(null);
+    setError(""); setSelected(null);
+    const cached = rankingsCache.current.get(date);
+    if (cached && cached.expires > Date.now()) {
+      setMovies(cached.movies); setLoading(false);
+      return () => controller.abort();
+    }
+    setLoading(true); setMovies([]);
     fetch(`/api/boxoffice?date=${encodeURIComponent(date)}`, { signal: controller.signal })
       .then(async response => { const data = await response.json() as { movies: Movie[]; error?: string }; if (!response.ok) throw new Error(data.error); return data; })
-      .then(data => { if (version === requestVersion.current) setMovies(data.movies); })
+      .then(data => {
+        if (controller.signal.aborted || version !== requestVersion.current) return;
+        if (rankingsCache.current.size >= 60) rankingsCache.current.delete(rankingsCache.current.keys().next().value!);
+        rankingsCache.current.set(date, { expires: Date.now() + 600000, movies: data.movies });
+        setMovies(data.movies);
+      })
       .catch(e => { if (!controller.signal.aborted) setError(e.message || "순위를 불러오지 못했습니다."); })
       .finally(() => { if (!controller.signal.aborted && version === requestVersion.current) setLoading(false); });
     return () => controller.abort();
@@ -44,10 +57,21 @@ export default function BoxOffice({ initialDate }: { initialDate: string }) {
   useEffect(() => {
     if (!selected) return;
     const controller = new AbortController();
-    setInfo(null); setDetailError(""); setDetailLoading(true);
+    setDetailError("");
+    const cached = detailsCache.current.get(selected.movieCd);
+    if (cached && cached.expires > Date.now()) {
+      setInfo(cached.info); setDetailLoading(false);
+      return () => controller.abort();
+    }
+    setInfo(null); setDetailLoading(true);
     fetch(`/api/movies/${selected.movieCd}`, { signal: controller.signal })
       .then(async response => { const data = await response.json() as MovieInfo & { error?: string }; if (!response.ok) throw new Error(data.error); return data; })
-      .then(setInfo)
+      .then(data => {
+        if (controller.signal.aborted) return;
+        if (detailsCache.current.size >= 120) detailsCache.current.delete(detailsCache.current.keys().next().value!);
+        detailsCache.current.set(selected.movieCd, { expires: Date.now() + 3600000, info: data });
+        setInfo(data);
+      })
       .catch(e => { if (!controller.signal.aborted) setDetailError(e.message || "상세정보를 불러오지 못했습니다."); })
       .finally(() => { if (!controller.signal.aborted) setDetailLoading(false); });
     return () => controller.abort();

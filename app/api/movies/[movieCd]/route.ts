@@ -8,6 +8,6 @@ export async function GET(_request: Request, context: { params: Promise<{ movieC
     const info = (data.movieInfoResult as { movieInfo?: MovieInfo } | undefined)?.movieInfo;
     if (!info?.movieCd) throw new ApiError(404, "영화 상세정보를 찾을 수 없습니다.");
     const { movieNm, movieNmEn, prdtYear, showTm, openDt, typeNm, prdtStatNm, nations, genres, directors, actors, audits, companys } = info;
-    return Response.json({ movieCd, movieNm, movieNmEn, prdtYear, showTm, openDt, typeNm, prdtStatNm, nations, genres, directors, actors, audits, companys }, { headers: { "Cache-Control": "private, max-age=600" } });
+    return Response.json({ movieCd, movieNm, movieNmEn, prdtYear, showTm, openDt, typeNm, prdtStatNm, nations, genres, directors, actors, audits, companys }, { headers: { "Cache-Control": "public, max-age=600, s-maxage=3600, stale-while-revalidate=3600" } });
   } catch (error) { return errorResponse(error); }
 }
